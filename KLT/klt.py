@@ -4,14 +4,13 @@ import os
 # from time import clock
 
 lk_params = dict( winSize  = (15, 15),
-                  maxLevel = 2,
+                  maxLevel = 3,
                   criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
 
 feature_params = dict( maxCorners = 500,
                        qualityLevel = 0.3,
                        minDistance = 7,
                        blockSize = 7 )
-
 
 
 global img_init
@@ -162,14 +161,27 @@ class App:
 
 
                 if self.frame_idx % self.detect_interval == 0 and len(self.tracks) == 0:
-                    mask = np.zeros_like(img_gray)
-                    mask[:] = 255
-                    for x, y in [np.int32(tr[-1]) for tr in self.tracks]:
-                        cv2.circle(mask, (x, y), 5, 0, -1)
-                    p = cv2.goodFeaturesToTrack(img_gray, mask = mask, **feature_params)
-                    if p is not None:
-                        for x, y in np.float32(p).reshape(-1, 2):
-                            self.tracks.append([(x, y)])
+                    # mask = np.zeros_like(img_gray)
+                    # mask[:] = 255
+                    # for x, y in [np.int32(tr[-1]) for tr in self.tracks]:
+                    #     cv2.circle(mask, (x, y), 5, 0, -1)
+                    # p = cv2.goodFeaturesToTrack(img_gray, mask = mask, **feature_params)
+                    # if p is not None:
+                    #     for x, y in np.float32(p).reshape(-1, 2):
+                    #         self.tracks.append([(x, y)])
+                    img_init = img.copy()
+                    cv2.namedWindow('lk_track')
+                    cv2.setMouseCallback('lk_track', select_on_mouse)
+                    cv2.imshow('lk_track', img_init)
+                    cv2.waitKey()
+
+                    self.tracks = tracks
+                    self.prev_gray = img_gray
+                    for points in self.tracks:
+                        for x,y in points:
+                            cv2.circle(img_init, (int(x), int(y)), 2, (0, 255, 0), -1)
+                    cv2.imshow('lk_track', img_init)
+                    cv2.waitKey()
 
                 self.frame_idx += 1
                 self.prev_gray = img_gray
@@ -181,7 +193,7 @@ class App:
 
 def main():
     video_src = ""
-    img_src = "E:/data/OTB100/Subway/img"
+    img_src = "E:/data/OTB100/Walking/img"
     
     demo = App(video_src, img_src)
     demo.run()
