@@ -13,193 +13,202 @@ feature_params = dict( maxCorners = 500,
                        blockSize = 7 )
 
 
-global img_init
-global point1, point2
-global tracks
-tracks = []
-def select_on_mouse(event, x, y, flags, param):
-    global point1, point2
-    global img_init
-    img2 = img_init.copy()
-    if event == cv2.EVENT_LBUTTONDOWN:         #左键点击
-        point1 = (x,y)
-        cv2.circle(img2, point1, 10, (0,255,0), 5)
-        cv2.imshow('lk_track', img2)
-    elif event == cv2.EVENT_MOUSEMOVE and (flags & cv2.EVENT_FLAG_LBUTTON):               #按住左键拖曳
-        cv2.rectangle(img2, point1, (x,y), (255,0,0), 5)
-        cv2.imshow('lk_track', img2)
+current_pos = None
+tl = None
+br = None
+# 鼠标事件
+def get_rect(im, title='get_rect'):
+    mouse_params = {'tl': None, 'br': None, 'current_pos': None,'released_once': False}
 
-    elif event == cv2.EVENT_LBUTTONUP:         #左键释放
-        point2 = (x,y)
-        cv2.rectangle(img2, point1, point2, (0,0,255), 5) 
-        cv2.imshow('lk_track', img2)
-        min_x = min(point1[0],point2[0])     
-        min_y = min(point1[1],point2[1])
-        width = abs(point1[0] - point2[0])
-        height = abs(point1[1] -point2[1])
+    cv2.namedWindow(title)
+    cv2.moveWindow(title, 100, 100)
 
-        cut_img = img_init[min_y:min_y+height, min_x:min_x+width]
-        img_gray = cv2.cvtColor(cut_img, cv2.COLOR_BGR2GRAY)
-        mask = np.zeros_like(img_gray)
+    def onMouse(event, x, y, flags, param):
+        param['current_pos'] = (x, y)
+
+        if param['tl'] is not None and not (flags & cv2.EVENT_FLAG_LBUTTON):
+            param['released_once'] = True
+
+        if flags & cv2.EVENT_FLAG_LBUTTON:
+            if param['tl'] is None:
+                param['tl'] = param['current_pos']
+            elif param['released_once']:
+                param['br'] = param['current_pos']
+
+    cv2.setMouseCallback(title, onMouse, mouse_params)
+    cv2.imshow(title, im)
+
+    while mouse_params['br'] is None:
+        im_draw = np.copy(im)
+
+        if mouse_params['tl'] is not None:
+            cv2.rectangle(im_draw, mouse_params['tl'],
+                mouse_params['current_pos'], (255, 0, 0))
+
+        cv2.imshow(title, im_draw)
+        _ = cv2.waitKey(10)
+
+    cv2.destroyWindow(title)
+
+    tl = (min(mouse_params['tl'][0], mouse_params['br'][0]),
+        min(mouse_params['tl'][1], mouse_params['br'][1]))
+    br = (max(mouse_params['tl'][0], mouse_params['br'][0]),
+        max(mouse_params['tl'][1], mouse_params['br'][1]))
+    return (tl, br)
+
+
+
+        
+def my_klt(src):
+    tracks = []
+    frame_idx = 0
+    if src.endswith('.mp4'):
+        cap = cv2.VideoCapture(src)
+        # 读取摄像头第一帧图像
+        ret, frame = cap.read()
+
+        # 初始化位置窗口
+        #r,h,c,w = 250,90,400,125 # simply hardcoded the values
+        # r,h,c,w=15,370,319,87
+
+        # 初始位置
+        a1,a2 = get_rect(frame, title='get_rect') # 手动选框
+        r,h,c,w = a1[1],a2[1]-a1[1],a1[0],a2[0]-a1[0]  # 手动选框
+
+         # 设置所要跟踪的ROI
+        roi = frame[r:r+h, c:c+w]
+        roi_gray = cv2.cvtColor(roi,cv2.COLOR_BGR2GRAY)
+
+        mask = np.zeros_like(roi_gray)
         mask[:] = 255
-        p = cv2.goodFeaturesToTrack(img_gray, mask = mask, **feature_params)
+        p = cv2.goodFeaturesToTrack(roi_gray, mask = mask, **feature_params)
         if p is not None:
             for x, y in np.float32(p).reshape(-1, 2):
-                tracks.append([(min_x+x, min_y+y)])
+                tracks.append([(c+x, r+y)])
+                prev_gray = cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
+
+        while True:
+            _ret, frame = cap.read()
+            if _ret is not True:
+                return
+            frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            vis = frame.copy()
+
+            if len(tracks) > 0:
+                img0, img1 = prev_gray, frame_gray
+
+                p0 = np.float32([tr[-1] for tr in tracks]).reshape(-1, 1, 2)
+                p1, _st, _err = cv2.calcOpticalFlowPyrLK(img0, img1, p0, None, **lk_params)
+
+                d = abs(p1-p0).reshape(-1, 2).max(-1)
+                good = d > 1
+
+                new_tracks = []
+                for tr, (x, y), good_flag in zip(tracks, p1.reshape(-1, 2), good):
+                    if not good_flag:
+                        continue
+                    tr.append((x, y))
+                    if len(tr) > 15:
+                        del tr[0]
+                    new_tracks.append(tr)
+                    cv2.circle(vis, (int(x), int(y)), 2, (0, 255, 0), -1)
+                tracks = new_tracks
+                cv2.polylines(vis, [np.int32(tr) for tr in tracks], False, (0, 255, 0))
+
+            # if frame_idx % 5 == 0 and len(tracks) == 0:
+
+            #     mask = np.zeros_like(frame_gray)
+            #     mask[:] = 255
+            #     for x, y in [np.int32(tr[-1]) for tr in tracks]:
+            #         cv2.circle(mask, (x, y), 5, 0, -1)
+            #     p = cv2.goodFeaturesToTrack(frame_gray, mask = mask, **feature_params)
+            #     if p is not None:
+            #         for x, y in np.float32(p).reshape(-1, 2):
+            #             tracks.append([(x, y)])
 
 
+            frame_idx += 1
+            prev_gray = frame_gray
+            cv2.imshow('lk_track', vis)
 
-class App:
-    def __init__(self, video_src, img_src):
-        self.track_len = 10
-        self.detect_interval = 5
-        self.tracks = []
+            ch = cv2.waitKey(20)
+            if ch == 27:
+                break
+    else:
+        for file in os.listdir(src):
+            img = cv2.imread(os.path.join(src, file))
+            img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            vis = img.copy()
+            
+            if frame_idx == 0:
+                # 初始位置
+                a1,a2 = get_rect(img, title='get_rect') # 手动选框
+                r,h,c,w = a1[1],a2[1]-a1[1],a1[0],a2[0]-a1[0]  # 手动选框
 
-        if video_src != "":
-            self.cam = cv2.VideoCapture(video_src)
-            self.is_video = True
-        else:
+                # 设置所要跟踪的ROI
+                roi = img[r:r+h, c:c+w]
+                roi_gray = cv2.cvtColor(roi,cv2.COLOR_BGR2GRAY)
 
-            self.img_src = img_src
-            self.is_video = False
+                mask = np.zeros_like(roi_gray)
+                mask[:] = 255
+                p = cv2.goodFeaturesToTrack(roi_gray, mask = mask, **feature_params)
+                if p is not None:
+                    for x, y in np.float32(p).reshape(-1, 2):
+                        tracks.append([(c+x, r+y)])
+                        prev_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                frame_idx += 1
 
-        self.frame_idx = 0
-        
-    def run(self):
-        if self.is_video:
-            while True:
-                _ret, frame = self.cam.read()
-                if _ret is not True:
-                    return
-                frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                vis = frame.copy()
+            if len(tracks) > 0:
+                img0, img1 = prev_gray, img_gray
+                p0 = np.float32([tr[-1] for tr in tracks]).reshape(-1, 1, 2)
+                p1, _st, _err = cv2.calcOpticalFlowPyrLK(img0, img1, p0, None, **lk_params)
 
-                if len(self.tracks) > 0:
-                    img0, img1 = self.prev_gray, frame_gray
+                d = abs(p1-p0).reshape(-1, 2).max(-1)
+                good = d > 1
 
-                    p0 = np.float32([tr[-1] for tr in self.tracks]).reshape(-1, 1, 2)
-
-                    p1, _st, _err = cv2.calcOpticalFlowPyrLK(img0, img1, p0, None, **lk_params)
-
-                    d = abs(p1-p0).reshape(-1, 2).max(-1)
-                    good = d > 1
-
-                    new_tracks = []
-                    for tr, (x, y), good_flag in zip(self.tracks, p1.reshape(-1, 2), good):
-                        if not good_flag:
-                            continue
-                        tr.append((x, y))
-                        if len(tr) > self.track_len:
-                            del tr[0]
-                        new_tracks.append(tr)
-                        cv2.circle(vis, (int(x), int(y)), 2, (0, 255, 0), -1)
-                    self.tracks = new_tracks
-                    cv2.polylines(vis, [np.int32(tr) for tr in self.tracks], False, (0, 255, 0))
-
-                if self.frame_idx % self.detect_interval == 0:
-                    mask = np.zeros_like(frame_gray)
-                    mask[:] = 255
-                    for x, y in [np.int32(tr[-1]) for tr in self.tracks]:
-                        cv2.circle(mask, (x, y), 5, 0, -1)
-                    p = cv2.goodFeaturesToTrack(frame_gray, mask = mask, **feature_params)
-                    if p is not None:
-                        for x, y in np.float32(p).reshape(-1, 2):
-                            self.tracks.append([(x, y)])
+                new_tracks = []
+                for tr, (x, y), good_flag in zip(tracks, p1.reshape(-1, 2), good):
+                    if not good_flag:
+                        continue
+                    tr.append((x, y))
+                    if len(tr) > 15:
+                        del tr[0]
+                    new_tracks.append(tr)
+                    cv2.circle(vis, (int(x), int(y)), 2, (0, 255, 0), -1)
+                tracks = new_tracks
+                cv2.polylines(vis, [np.int32(tr) for tr in tracks], False, (0, 255, 0))
 
 
-                self.frame_idx += 1
-                self.prev_gray = frame_gray
-                cv2.imshow('lk_track', vis)
+            if frame_idx % 5 == 0 and len(tracks) == 0:
+                # 初始位置
+                a1,a2 = get_rect(img, title='lk_track') # 手动选框
+                r,h,c,w = a1[1],a2[1]-a1[1],a1[0],a2[0]-a1[0]  # 手动选框
 
-                ch = cv2.waitKey(30)
+                ch = cv2.waitKey(20)
                 if ch == 27:
-                    break
-        else:
-            for file in os.listdir(self.img_src):
-                img = cv2.imread(os.path.join(self.img_src, file))
-                img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                vis = img.copy()
+                    return 
+
+                # 设置所要跟踪的ROI
+                roi = img[r:r+h, c:c+w]
+                roi_gray = cv2.cvtColor(roi,cv2.COLOR_BGR2GRAY)
                 
-                if self.frame_idx == 0:
-                    global img_init
-                    global tracks
-                    img_init = img.copy()
-                    cv2.namedWindow('lk_track')
-                    cv2.setMouseCallback('lk_track', select_on_mouse)
-                    cv2.imshow('lk_track', img_init)
-                    cv2.waitKey()
+                mask = np.zeros_like(roi_gray)
+                mask[:] = 255
+                p = cv2.goodFeaturesToTrack(roi_gray, mask = mask, **feature_params)
+                if p is not None:
+                    for x, y in np.float32(p).reshape(-1, 2):
+                        tracks.append([(c+x, r+y)])
 
-                    self.tracks = tracks
-                    self.prev_gray = img_gray
-                    print(self.tracks)
-                    for points in self.tracks:
-                        for x,y in points:
-                            cv2.circle(img_init, (int(x), int(y)), 2, (0, 255, 0), -1)
-                    cv2.imshow('lk_track', img_init)
-                    cv2.waitKey()
+            frame_idx += 1
+            prev_gray = img_gray
+            cv2.imshow('lk_track', vis)
+            ch = cv2.waitKey(20)
 
-
-                if len(self.tracks) > 0:
-                    img0, img1 = self.prev_gray, img_gray
-                    p0 = np.float32([tr[-1] for tr in self.tracks]).reshape(-1, 1, 2)
-                    p1, _st, _err = cv2.calcOpticalFlowPyrLK(img0, img1, p0, None, **lk_params)
-
-                    d = abs(p1-p0).reshape(-1, 2).max(-1)
-                    good = d > 1
-
-                    new_tracks = []
-                    for tr, (x, y), good_flag in zip(self.tracks, p1.reshape(-1, 2), good):
-                        if not good_flag:
-                            continue
-                        tr.append((x, y))
-                        if len(tr) > self.track_len:
-                            del tr[0]
-                        new_tracks.append(tr)
-                        cv2.circle(vis, (int(x), int(y)), 2, (0, 255, 0), -1)
-                    self.tracks = new_tracks
-                    cv2.polylines(vis, [np.int32(tr) for tr in self.tracks], False, (0, 255, 0))
-
-
-                if self.frame_idx % self.detect_interval == 0 and len(self.tracks) == 0:
-                    # mask = np.zeros_like(img_gray)
-                    # mask[:] = 255
-                    # for x, y in [np.int32(tr[-1]) for tr in self.tracks]:
-                    #     cv2.circle(mask, (x, y), 5, 0, -1)
-                    # p = cv2.goodFeaturesToTrack(img_gray, mask = mask, **feature_params)
-                    # if p is not None:
-                    #     for x, y in np.float32(p).reshape(-1, 2):
-                    #         self.tracks.append([(x, y)])
-                    img_init = img.copy()
-                    cv2.namedWindow('lk_track')
-                    cv2.setMouseCallback('lk_track', select_on_mouse)
-                    cv2.imshow('lk_track', img_init)
-                    cv2.waitKey()
-
-                    self.tracks = tracks
-                    self.prev_gray = img_gray
-                    for points in self.tracks:
-                        for x,y in points:
-                            cv2.circle(img_init, (int(x), int(y)), 2, (0, 255, 0), -1)
-                    cv2.imshow('lk_track', img_init)
-                    cv2.waitKey()
-
-                self.frame_idx += 1
-                self.prev_gray = img_gray
-                cv2.imshow('lk_track', vis)
-                ch = cv2.waitKey(30)
-
-                if ch == 27:
-                    break
-
-def main():
-    video_src = ""
-    img_src = "E:/data/OTB100/Walking/img"
-    
-    demo = App(video_src, img_src)
-    demo.run()
-    print('Done')
+            if ch == 27:
+                break
 
 
 if __name__ == '__main__':
-    main()
-    cv2.destroyAllWindows()
+    src = "E:/data/OTB100/Walking/img"
+    # src = './video/car5.mp4'
+    my_klt(src)
