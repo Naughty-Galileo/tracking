@@ -23,7 +23,7 @@ def get_rect(im, title='get_rect'):
     cv2.namedWindow(title)
     cv2.moveWindow(title, 100, 100)
 
-    def onMouse(event, x, y, flags, param):
+    def on_mouse(event, x, y, flags, param):
         param['current_pos'] = (x, y)
 
         if param['tl'] is not None and not (flags & cv2.EVENT_FLAG_LBUTTON):
@@ -35,7 +35,7 @@ def get_rect(im, title='get_rect'):
             elif param['released_once']:
                 param['br'] = param['current_pos']
 
-    cv2.setMouseCallback(title, onMouse, mouse_params)
+    cv2.setMouseCallback(title, on_mouse, mouse_params)
     cv2.imshow(title, im)
 
     while mouse_params['br'] is None:
