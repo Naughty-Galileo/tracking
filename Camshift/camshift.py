@@ -48,7 +48,7 @@ def get_rect(im, title='get_rect'):
     return (tl, br)
 
 
-def my_meanshift(src):
+def my_camshift(src):
     if src.endswith('.mp4'):
         cap = cv2.VideoCapture(src)
         # 读取摄像头第一帧图像
