@@ -153,4 +153,4 @@ def my_camshift(src):
 if __name__=='__main__':
     # src = './video/car5.mp4'
     src = 'E:/data/OTB100/Walking/img'
-    my_meanshift(src)    #  E:/data/OTB100/Walking/img
+    my_camshift(src)    #  E:/data/OTB100/Walking/img
