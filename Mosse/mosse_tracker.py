@@ -3,6 +3,50 @@ import numpy as np
 import os
 from mosse import MOSSE
 
+
+current_pos = None
+tl = None
+br = None
+# 鼠标事件
+def get_rect(im, title='get_rect'):
+    mouse_params = {'tl': None, 'br': None, 'current_pos': None,'released_once': False}
+
+    cv2.namedWindow(title)
+    cv2.moveWindow(title, 100, 100)
+
+    def on_mouse(event, x, y, flags, param):
+        param['current_pos'] = (x, y)
+
+        if param['tl'] is not None and not (flags & cv2.EVENT_FLAG_LBUTTON):
+            param['released_once'] = True
+
+        if flags & cv2.EVENT_FLAG_LBUTTON:
+            if param['tl'] is None:
+                param['tl'] = param['current_pos']
+            elif param['released_once']:
+                param['br'] = param['current_pos']
+
+    cv2.setMouseCallback(title, on_mouse, mouse_params)
+    cv2.imshow(title, im)
+
+    while mouse_params['br'] is None:
+        im_draw = np.copy(im)
+
+        if mouse_params['tl'] is not None:
+            cv2.rectangle(im_draw, mouse_params['tl'],
+                mouse_params['current_pos'], (255, 0, 0))
+
+        cv2.imshow(title, im_draw)
+        _ = cv2.waitKey(10)
+
+    cv2.destroyWindow(title)
+
+    tl = (min(mouse_params['tl'][0], mouse_params['br'][0]),
+        min(mouse_params['tl'][1], mouse_params['br'][1]))
+    br = (max(mouse_params['tl'][0], mouse_params['br'][0]),
+        max(mouse_params['tl'][1], mouse_params['br'][1]))
+    return (tl, br)
+
 def get_axis_aligned_bbox(region):
     nv = region.size
     if nv == 8:
@@ -63,6 +107,8 @@ class PyTracker:
         self.frame_list =get_img_list(img_dir+'/img')
         self.frame_list.sort()
         self.gts=get_ground_truthes(img_dir)
+
+
         self.init_gt=self.gts[0]
 
         if self.tracker_type == 'MOSSE':
@@ -70,13 +116,20 @@ class PyTracker:
         else:
             raise NotImplementedError
 
-    def tracking(self,verbose=True,video_path=None):
+    def tracking(self,verbose=True,video_path=None,select=False):
+        
         poses = []
         init_frame = cv2.imread(self.frame_list[0])
+
+        if select:
+            # 初始位置
+            a1,a2 = get_rect(init_frame, title='get_rect') # 手动选框
+            r,h,c,w = a1[1],a2[1]-a1[1],a1[0],a2[0]-a1[0]  # 手动选框
+            self.init_gt = [c, r, w, h]
         
         init_gt = np.array(self.init_gt)
         if init_gt.shape[0] != 4:
-            init_gt = get_axis_aligned_bbox(init_gt)
+            init_gt = get_axis_aligned_bbox(init_gt) 
             print(init_gt)
         x1, y1, w, h =init_gt
         init_gt=tuple(init_gt)
@@ -93,6 +146,7 @@ class PyTracker:
                 height,width=current_frame.shape[:2]
                 bbox=self.tracker.update(current_frame,vis=verbose)
                 x1,y1,w,h=bbox
+
                 if verbose is True:
                     if len(current_frame.shape)==2:
                         current_frame=cv2.cvtColor(current_frame,cv2.COLOR_GRAY2BGR)
@@ -126,6 +180,7 @@ class PyTracker:
                     down = height - ymax
                     ymax = height if down < 0 else ymax
                     down = size[1] + down if down < 0 else size[1]
+
                     score = score[top:down, left:right]
                     crop_img = current_frame[ymin:ymax, xmin:xmax]
                     score_map = cv2.addWeighted(crop_img, 0.6, score, 0.4, 0)
@@ -146,7 +201,7 @@ class PyTracker:
 
 def main():
     tracker = PyTracker('E:/data/OTB100/Walking', 'MOSSE')
-    tracker.tracking()
+    tracker.tracking(select=True)
 
 if __name__ == '__main__':
     main()
