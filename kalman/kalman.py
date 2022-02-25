@@ -128,8 +128,8 @@ for i in range(len(kf.errorCovPre)):
     kf.errorCovPre[i,i] = 1
 state[0] = center_x
 state[1] = center_y
-state[2] = 0.5
-state[3] = 0.1
+state[2] = 0
+state[3] = 0
 state[4] = w
 state[5] = h
 kf.statePost = state
