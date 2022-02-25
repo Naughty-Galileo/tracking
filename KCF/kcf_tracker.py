@@ -38,11 +38,11 @@ def rearrange(img):
 	print("xh = ", xh)
 	print("yh = ", yh)
 	print("img = ", img.shape)
-	img
 	xh = int(xh)
 	yh = int(yh)
-	img_[0:yh,0:xh], img_[yh:img.shape[0],xh:img.shape[1]] = img[yh:img.shape[0],xh:img.shape[1]], img[0:yh,0:xh]
-	img_[0:yh,xh:img.shape[1]], img_[yh:img.shape[0],0:xh] = img[yh:img.shape[0],0:xh], img[0:yh,xh:img.shape[1]]
+	img_[0:yh,0:xh]  = img[yh:img.shape[0],xh+1:img.shape[1]]
+	img_[yh:img.shape[0],xh:img.shape[1]] = img[0:yh,0:xh+1]
+	img_[0:yh,xh:img.shape[1]], img_[yh:img.shape[0],0:xh] = img[yh:img.shape[0],0:xh+1], img[0:yh,xh+1:img.shape[1]]
 	return img_
  
  

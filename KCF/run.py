@@ -53,9 +53,7 @@ if __name__ == '__main__':
     path_list.sort()
     i = 0
         
-    _roi = [0.,0.,0.,0.] 
-        
-    print(_roi[0])
+    draw_boundingbox()
         
     for filename in path_list:
         oimg = cv2.imread(path + "/" + filename)
@@ -70,5 +68,6 @@ if __name__ == '__main__':
                             (0,255,255), 1)
             tpath1= str(i + 100000) + 'result.jpg'
             cv2.imshow('demo', oimg)
+            cv2.waitKey(20)
             # cv2.imwrite(tpath1, oimg)
         i += 1
