@@ -156,6 +156,7 @@ class PyTracker:
                     F_max = np.max(score)
                     size=self.tracker.crop_size
                     score = cv2.resize(score, size)
+
                     score -= score.min()
                     score =score/ score.max()
                     score = (score * 255).astype(np.uint8)
@@ -186,7 +187,10 @@ class PyTracker:
                     score_map = cv2.addWeighted(crop_img, 0.6, score, 0.4, 0)
                     current_frame[ymin:ymax, xmin:xmax] = score_map
                     show_frame=cv2.rectangle(current_frame, (int(x1), int(y1)), (int(x1 + w), int(y1 + h)), (255, 0, 0),1)
-
+                    
+                    if not select:
+                        gt_box = self.gts[idx]
+                        show_frame=cv2.rectangle(show_frame, (int(gt_box[0]), int(gt_box[1])), (int(gt_box[0] + gt_box[2]), int(gt_box[1] + gt_box[3])), (0, 255, 0),1)
 
                     cv2.imshow('demo', show_frame)
                     if writer is not None:
@@ -201,7 +205,7 @@ class PyTracker:
 
 def main():
     tracker = PyTracker('E:/data/OTB100/Walking', 'MOSSE')
-    tracker.tracking(select=True)
+    tracker.tracking(select=False)
 
 if __name__ == '__main__':
     main()

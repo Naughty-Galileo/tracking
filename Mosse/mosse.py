@@ -24,6 +24,7 @@ def gaussian2d_labels(sz,sigma):
     w,h=sz
     xs, ys = np.meshgrid(np.arange(w), np.arange(h)) # 根据w, h的值生成一个网格的x，y坐标
     center_x, center_y = w / 2, h / 2
+
     dist = ((xs - center_x) ** 2 + (ys - center_y) ** 2) / (sigma**2)
     labels = np.exp(-0.5*dist)
     return labels
@@ -49,14 +50,18 @@ class MOSSE(BaseCF):
         if len(first_frame.shape)!=2:
             assert first_frame.shape[2]==3
             first_frame=cv2.cvtColor(first_frame,cv2.COLOR_BGR2GRAY) # RGB图片转换成灰度图片
+
         first_frame=first_frame.astype(np.float32)/255 # 归一化
         x,y,w,h=tuple(bbox) # 取出第一帧中ground truth的坐标值 x,y为框的左上角坐标，w, h为框的大小
         self._center=(x+w/2,y+h/2) # 计算ground truth的中心 
         self.w,self.h=w,h # 获取框的大小
         w,h=int(round(w)),int(round(h)) # round()四舍五入
+        
         self.cos_window=cos_window((w,h))  # 定义汉宁窗 
         self._fi=cv2.getRectSubPix(first_frame,(w,h),self._center) # 从第一帧中截取出检测的目标部分， _fi.shape = (w,h)
+
         self._G=np.fft.fft2(gaussian2d_labels((w,h),self.sigma)) # 首先生成一个w * h(检测框大小)的高斯核，然后对该高斯核进行傅里叶变换，初始化G
+
         self.crop_size=(w,h) # 定义裁剪框的大小 
         self._Ai=np.zeros_like(self._G) # 初始化Ai
         self._Bi=np.zeros_like(self._G) # 初始化Bi
@@ -73,8 +78,11 @@ class MOSSE(BaseCF):
         if len(current_frame.shape)!=2:
             assert current_frame.shape[2]==3
             current_frame=cv2.cvtColor(current_frame,cv2.COLOR_BGR2GRAY)
+
         current_frame=current_frame.astype(np.float32)/255
+        # 更新滤波器
         Hi=self._Ai/self._Bi
+
         fi=cv2.getRectSubPix(current_frame,(int(round(self.w)),int(round(self.h))),self._center) # 针对当前帧，用前一个目标框的中心截取一个框
         fi=self._preprocessing(fi,self.cos_window)
         Gi=Hi*np.fft.fft2(fi)
@@ -90,6 +98,8 @@ class MOSSE(BaseCF):
         fi=cv2.getRectSubPix(current_frame,(int(round(self.w)),int(round(self.h))),self._center) # 针对当前帧，用新的中心截取一个框
         fi=self._preprocessing(fi,self.cos_window) 
         Fi=np.fft.fft2(fi)
+        
+        # 更新滤波器
         self._Ai=self.interp_factor*(self._G*np.conj(Fi))+(1-self.interp_factor)*self._Ai
         self._Bi=self.interp_factor*(Fi*np.conj(Fi))+(1-self.interp_factor)*self._Bi
         return [self._center[0]-self.w/2,self._center[1]-self.h/2,self.w,self.h] # 返回值为当前框的坐标(x, y, w, h)
